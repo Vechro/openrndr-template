@@ -29,7 +29,7 @@ val orxFeatures = setOf<String>(
 //  "orx-interval-tree",
 //  "orx-jumpflood",
 //  "orx-kdtree",
-//  "orx-keyframer",      
+//  "orx-keyframer",
 //  "orx-kinect-v1",
 //  "orx-kotlin-parser",
 //  "orx-mesh-generators",
@@ -97,8 +97,62 @@ repositories {
     mavenCentral()
 }
 
-dependencies {
+fun Project.addHostMachineAttributesToConfiguration(configurationName: String) {
+    configurations[configurationName].attributes {
+        attribute(
+            OperatingSystemFamily.OPERATING_SYSTEM_ATTRIBUTE,
+            objects.named(DefaultNativePlatform.getCurrentOperatingSystem().toFamilyName())
+        )
+        attribute(
+            MachineArchitecture.ARCHITECTURE_ATTRIBUTE,
+            objects.named(DefaultNativePlatform.getCurrentArchitecture().name)
+        )
+    }
+}
 
+addHostMachineAttributesToConfiguration("runtimeClasspath")
+addHostMachineAttributesToConfiguration("testRuntimeClasspath")
+
+@CacheableRule
+abstract class LwjglRule : ComponentMetadataRule {
+    data class JvmNativeVariant(val targetName: String, val os: String, val arch: String)
+
+    val jvmNativeVariants: List<JvmNativeVariant> = listOf(
+        JvmNativeVariant("natives-linux-arm64", OperatingSystemFamily.LINUX, "arm64"),
+        JvmNativeVariant("natives-linux", OperatingSystemFamily.LINUX, "x86-64"),
+        JvmNativeVariant("natives-macos-arm64", OperatingSystemFamily.MACOS, "arm64"),
+        JvmNativeVariant("natives-macos", OperatingSystemFamily.MACOS, "x86-64"),
+        JvmNativeVariant("natives-windows", OperatingSystemFamily.WINDOWS, "x86-64")
+    )
+
+    @get:Inject
+    abstract val objects: ObjectFactory
+
+    override fun execute(context: ComponentMetadataContext) = context.details.run {
+        if (id.group != "org.lwjgl") return
+        if (id.name == "lwjgl-egl") return
+        withVariant("runtime") {
+            attributes {
+                attributes.attribute(OperatingSystemFamily.OPERATING_SYSTEM_ATTRIBUTE, objects.named("none"))
+                attributes.attribute(MachineArchitecture.ARCHITECTURE_ATTRIBUTE, objects.named("none"))
+            }
+        }
+        for ((targetName, os, arch) in jvmNativeVariants) {
+            addVariant("$targetName-runtime", "runtime") {
+                attributes {
+                    attributes.attribute(OperatingSystemFamily.OPERATING_SYSTEM_ATTRIBUTE, objects.named(os))
+                    attributes.attribute(MachineArchitecture.ARCHITECTURE_ATTRIBUTE, objects.named(arch))
+                }
+                withFiles {
+                    addFile("${id.name}-${id.version}-$targetName.jar")
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    components.all<LwjglRule>()
 //    implementation(libs.jsoup)
 //    implementation(libs.gson)
 //    implementation(libs.csv)
@@ -245,9 +299,9 @@ class Openrndr {
         }
         dependencies {
             runtimeOnly(openrndr("gl3"))
-            runtimeOnly(openrndrNatives("gl3"))
+//            runtimeOnly(openrndrNatives("gl3"))
             implementation(openrndr("openal"))
-            runtimeOnly(openrndrNatives("openal"))
+//            runtimeOnly(openrndrNatives("openal"))
             implementation(openrndr("application"))
             implementation(openrndr("svg"))
             implementation(openrndr("animatable"))
@@ -269,4 +323,5 @@ class Openrndr {
         }
     }
 }
+
 val openrndr = Openrndr()
